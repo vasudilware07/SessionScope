@@ -1,0 +1,3 @@
+import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';import App from'./App';import'./style.css';import{createTracker}from'@sessionscope/tracking-sdk';
+const tracker=createTracker({projectId:import.meta.env.VITE_PROJECT_ID??'demo-project',endpoint:`${import.meta.env.VITE_API_URL??'http://localhost:4000'}/api/v1/events`,onAccepted:n=>window.dispatchEvent(new CustomEvent('ss-accepted',{detail:n})),onError:()=>window.dispatchEvent(new Event('ss-error'))});
+(window as any).sessionScopeTracker=tracker;createRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><App tracker={tracker}/></BrowserRouter></React.StrictMode>);

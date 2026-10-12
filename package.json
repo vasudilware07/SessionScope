@@ -1,0 +1,31 @@
+{
+  "name": "sessionscope",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build --workspace @sessionscope/tracking-sdk && concurrently -k -n api,dashboard,demo -c blue,green,magenta \"npm:dev:api\" \"npm:dev:dashboard\" \"npm:dev:demo\"",
+    "dev:api": "npm --workspace @sessionscope/api run dev",
+    "dev:dashboard": "npm --workspace @sessionscope/dashboard run dev",
+    "dev:demo": "npm --workspace @sessionscope/demo-storefront run dev",
+    "build": "npm run build --workspace @sessionscope/tracking-sdk && npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "seed": "npm --workspace @sessionscope/api run seed"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@vitest/utils": "^5.0.3",
+    "concurrently": "^9.1.2",
+    "es-errors": "^1.3.0",
+    "express": "^4.21.2",
+    "jsdom": "^25.0.1",
+    "object-inspect": "^1.13.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.4",
+    "vitest": "^5.0.3"
+  }
+}
