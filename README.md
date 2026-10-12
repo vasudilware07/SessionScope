@@ -34,17 +34,6 @@ Node.js 20+, npm 10+, and Docker Desktop (or MongoDB 7 locally). Atlas can be us
 
 Copy `.env.example` to `.env`. Key settings:
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `MONGODB_URI` | Mongo connection string | `mongodb://127.0.0.1:27017/sessionscope` |
-| `PORT` | API listen port | `4000` |
-| `ALLOWED_ORIGINS` | CORS and initial project browser origins | dashboard and storefront localhost origins |
-| `DEFAULT_PROJECT_ID` | Public project identifier | `demo-project` |
-| `EVENT_RETENTION_DAYS` | TTL retention duration | `90` |
-| `ADMIN_API_KEY` | Required to update project origins on a production API | unset |
-| `VITE_API_URL` | API URL consumed by both Vite apps | `http://localhost:4000` |
-| `VITE_PROJECT_ID` | Shared demo project identifier | `demo-project` |
-| `VITE_TRACKER_URL` | Standalone tracker snippet URL | `http://localhost:5174/tracker.js` |
 
 The Vite environment values are exposed to browser bundles; never place secrets in them.
 Project settings writes are enabled without a key only in local development. In production, set a strong `ADMIN_API_KEY` on the API and call the origin-management endpoint from a trusted admin client with the `x-admin-key` header. This assignment does not include user login or a secure browser admin-token flow, so the dashboard intentionally cannot send that server secret.
