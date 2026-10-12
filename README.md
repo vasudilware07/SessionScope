@@ -85,6 +85,7 @@ I keep `.env` out of Git, so credentials should go in `.env` locally and in the 
 | `LOG_LEVEL` | API | Pino logging level; defaults to `info` |
 | `VITE_API_URL` | Dashboard and storefront | Base URL of the API |
 | `VITE_PROJECT_ID` | Dashboard and storefront | Project identifier to query or send events for |
+| `VITE_DEMO_URL` | Dashboard | Deployed demo storefront URL |
 | `VITE_TRACKER_URL` | Dashboard | URL shown in the tracker installation snippet |
 
 ## Try the tracking flow
@@ -113,14 +114,61 @@ Analytics endpoints accept `projectId`. Date filters use ISO `from` and `to` val
 
 ## Deploy it
 
-For a basic deployment, I would use Atlas for MongoDB, Render for the API, and Vercel for the two frontend apps.
+For the live version I use MongoDB Atlas for the database, Render for the API, and two Vercel projects for the dashboard and demo storefront. I added `render.yaml` and Vercel rewrite files so the hosts know how to build the apps and keep their browser routes working.
 
-1. Set up Atlas and allow connections from the API host.
-2. Deploy the API from the repository root. Build with `npm install && npm run build` and start it with `npm run start --workspace @sessionscope/api`.
-3. Add the server variables in the API host's environment settings: `NODE_ENV=production`, `MONGODB_URI`, `ALLOWED_ORIGINS`, `DEFAULT_PROJECT_ID`, `DEFAULT_PROJECT_NAME`, `EVENT_RETENTION_DAYS`, and a strong `ADMIN_API_KEY`.
-4. Deploy `apps/dashboard` and `apps/demo-storefront` as separate frontend projects. Set `VITE_API_URL` to the deployed API URL and `VITE_PROJECT_ID` to the same project ID used by the API. Set `VITE_TRACKER_URL` for the dashboard's installation instructions.
-5. Add the exact dashboard and storefront origins to `ALLOWED_ORIGINS`. Check the project's allowed origins too.
-6. Open `/api/v1/health` and `/api/v1/ready` on the deployed API, send a test event, then check that it appears in the dashboard.
+### 1. Push the project to GitHub
+
+Commit and push this repository. Vercel and Render both deploy from the Git repository, so the files on GitHub need to include the latest changes.
+
+### 2. Deploy the dashboard and storefront on Vercel
+
+Create two Vercel projects from this same repository:
+
+- Dashboard project root: `apps/dashboard`
+- Storefront project root: `apps/demo-storefront`
+
+For both projects, enable **Include source files outside of the Root Directory** in the Root Directory build settings. These apps use shared packages from the repository's `packages` folder. Vercel should detect Vite, use `npm run build`, and publish the app's `dist` folder. The `vercel.json` files provide the route fallback for React Router pages.
+
+Add these variables to both Vercel projects for Production and Preview, then redeploy after setting them:
+
+```env
+VITE_API_URL=https://<your-render-api-url>
+VITE_PROJECT_ID=demo-project
+```
+
+For the Dashboard project, also add:
+
+```env
+VITE_DEMO_URL=https://<your-storefront-vercel-url>
+```
+
+`VITE_TRACKER_URL` is optional; by default the dashboard uses `<VITE_DEMO_URL>/tracker.js`. Vite values are included in public browser code, so only put public URLs and the project ID here. Never add `MONGODB_URI` or `ADMIN_API_KEY` to Vercel.
+
+### 3. Add Render's IP ranges to Atlas
+
+In Atlas, rotate the database user's password first because I accidentally shared the previous connection string while setting up the project. Then make a new connection string for the `sessionscope` database and keep it private.
+
+Create the Render API service from the repository's `render.yaml`. Once Render creates the service, open its **Connect → Outbound** panel and add the listed IP ranges to Atlas under **Network Access**. Render's outbound ranges depend on the service region and can change, so use the ranges shown for this service. Add the IP ranges instead of the `0.0.0.0/0` allow-from-anywhere rule.
+
+In the Render Blueprint setup, enter these values:
+
+- `MONGODB_URI`: the new Atlas URI (keep it as a secret; include `/sessionscope` before any query string)
+- `ALLOWED_ORIGINS`: the full Vercel origins, separated by commas and with no trailing slash, for example `https://my-dashboard.vercel.app,https://my-storefront.vercel.app`
+
+The remaining API settings are in `render.yaml`. Render supplies `PORT`. The API creates the `demo-project` record on its first successful connection and uses `ALLOWED_ORIGINS` for both browser CORS and event-origin checks.
+
+### 4. Point both Vercel apps at the API
+
+After the API deploys, open these URLs, replacing the host with the Render URL:
+
+- `https://<your-render-api-url>/api/v1/health` — should return `status: ok`
+- `https://<your-render-api-url>/api/v1/ready` — should return `ready: true`
+
+Set `VITE_API_URL` on both Vercel projects to the exact Render base URL (no `/api` suffix), then redeploy them. If you used a temporary URL while creating the Vercel projects, replace it now.
+
+### 5. Verify event collection
+
+Open the deployed storefront, visit a few pages, and click something. Then check Overview, Sessions, Events, and Click heatmap on the deployed dashboard. If the dashboard loads but tracking does not, check the Render logs and confirm that both Vercel production origins appear in Render's `ALLOWED_ORIGINS` value.
 
 `PORT` is normally provided by the API host. Frontend `VITE_` values are public and need a new build after they change. Never set `MONGODB_URI` or `ADMIN_API_KEY` on a frontend project.
 

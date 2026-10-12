@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: sessionscope-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build --workspace @sessionscope/api
+    startCommand: npm run start --workspace @sessionscope/api
+    healthCheckPath: /api/v1/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: DEFAULT_PROJECT_ID
+        value: demo-project
+      - key: DEFAULT_PROJECT_NAME
+        value: SessionScope Demo
+      - key: EVENT_RETENTION_DAYS
+        value: "90"
+      - key: ADMIN_API_KEY
+        generateValue: true
