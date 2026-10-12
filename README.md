@@ -1,125 +1,147 @@
 # SessionScope
 
-Privacy-conscious session analytics for a demo storefront. Real browser page views and clicks are sent by a reusable tracker to an Express API, persisted in MongoDB, aggregated by the API, and displayed in the React dashboard.
+I built SessionScope to see how people move through a small demo website. The tracker records page views and safe clicks, the API stores those events in MongoDB, and the dashboard turns them into session details, charts, and click heatmaps.
 
-## Architecture
+This is a learning project, so it is not meant for regulated or sensitive data.
 
-```mermaid
-flowchart LR
-  Store[Demo storefront] --> SDK[Tracking SDK]
-  SDK -->|validated events| API[Express API]
-  API --> DB[(MongoDB)]
-  Dashboard[React dashboard] -->|analytics queries| API
-  API --> DB
-```
+## What I used
 
-## Stack
+React, Vite, TypeScript, Express, MongoDB with Mongoose, Zod, TanStack Query, Recharts, and Vitest.
 
-React 18, Vite, TypeScript, React Router, TanStack Query, Recharts, Express, Mongoose, MongoDB, Zod, Pino, Helmet, Vitest, React Testing Library.
+## What it can do
 
-## Features
+- Track page views and clicks with a random session ID. A new session starts after 30 minutes of inactivity.
+- Show an overview, sessions, event details, and click heatmaps in the dashboard.
+- Filter and explore events by project, date, page, and session.
+- Run a demo storefront with product pages, a cart, and a checkout flow that does not take payment.
+- Restrict event collection by allowed website origins and validate incoming event data.
+- Exclude form values, passwords, keystrokes, and page snapshots from tracking. Query strings and URL fragments are also removed.
 
-- Page view and delegated click tracking with a cryptographically random persistent session ID, 30-minute inactivity timeout, normalized viewport coordinates, bounded queue/retries, duplicate initialization protection, and opt-out.
-- Project-scoped ingestion with schema and size validation, unique event ID deduplication, origin allowlists, and per-IP rate limiting.
-- MongoDB aggregation-backed overview, session summaries, chronological session details, event explorer, and click heatmap endpoints.
-- Responsive overview, sessions and journey pages, heatmap fallback canvas, events explorer, project settings, installation guide, loading/error/empty states, and sidebar collapse.
-- Demo storefront pages for landing, listing, products, cart, and non-payment checkout. The UI reports event batch acceptance from the SDK.
-- Structured request logging, request IDs, security headers, readiness/health endpoints, graceful shutdown, OpenAPI entry point, and MongoDB TTL retention index.
+## Project layout
 
-## Prerequisites
+- `apps/api` — Express API and MongoDB models
+- `apps/dashboard` — analytics dashboard
+- `apps/demo-storefront` — sample website with the tracker installed
+- `packages/tracking-sdk` — browser tracking SDK
 
-Node.js 20+, npm 10+, and Docker Desktop (or MongoDB 7 locally). Atlas can be used instead of local MongoDB.
+## What you need
 
-## Environment
+Install Node.js 20 or newer and npm 10 or newer. For local development, use Docker Desktop for MongoDB, or install MongoDB 7 on your computer. You can use MongoDB Atlas instead.
 
-Copy `.env.example` to `.env`. Key settings:
+## Run it locally
 
+In PowerShell, open this project folder and run:
 
-The Vite environment values are exposed to browser bundles; never place secrets in them.
-Project settings writes are enabled without a key only in local development. In production, set a strong `ADMIN_API_KEY` on the API and call the origin-management endpoint from a trusted admin client with the `x-admin-key` header. This assignment does not include user login or a secure browser admin-token flow, so the dashboard intentionally cannot send that server secret.
-
-## Local startup
-
-```sh
-cp .env.example .env
+```powershell
+Copy-Item .env.example .env
 npm install
 docker compose up -d mongo
 npm run dev
 ```
 
-Open the dashboard at http://localhost:5173 and the demo storefront at http://localhost:5174. The API is at http://localhost:4000. The API creates the default project on startup. To populate optional sample analytics, run `npm run seed` (only inserts when the project has no events). To try a clean dataset, use a new MongoDB database name in `MONGODB_URI`.
+The apps will be available here:
 
-From PowerShell, replace the first line with `Copy-Item .env.example .env`.
+- Dashboard: http://localhost:5173
+- Demo storefront: http://localhost:5174
+- API: http://localhost:4000
+- API docs: http://localhost:4000/api/v1/docs
 
-## Verify the tracking flow
+The local `.env` uses this MongoDB address by default:
 
-Open the demo storefront, navigate between pages, click buttons or product cards, and check the development indicator for accepted API batches. Then inspect Overview, Sessions, Events explorer, or Click heatmap in the dashboard. The heatmap uses normalized **viewport-relative** coordinates (0–1); page scrolling does not become document coordinates, so it shows where a click fell in the visible viewport rather than a fixed full-page position. Its stylized canvas is a fallback preview, not a screenshot of arbitrary external pages.
+```env
+MONGODB_URI=mongodb://127.0.0.1:27017/sessionscope
+```
 
-## API
+The API creates the demo project when it starts. If you want sample events, run `npm run seed`. The seed script only adds data when the project has no events.
 
-Interactive API reference: http://localhost:4000/api/v1/docs
+## Connect to MongoDB Atlas
 
-| Method | Endpoint | Description |
+1. Create a cluster in Atlas and create a database user under **Database Access**.
+2. Add the IP address of the computer or server that will connect under **Network Access**.
+3. In Atlas, select **Connect**, choose the **Node.js Driver**, and copy the connection string.
+4. Put the URI in the root `.env` file as `MONGODB_URI`. Include a database name such as `sessionscope` before the `?` in the URI.
+
+It should have this general format:
+
+```env
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-host>/sessionscope?retryWrites=true&w=majority
+```
+
+Replace the placeholders with your Atlas values. If the password contains special characters, URL-encode it. The API reads `MONGODB_URI`; separate `MONGODB_USERNAME` and `MONGODB_PASSWORD` variables are not needed by the app.
+
+I keep `.env` out of Git, so credentials should go in `.env` locally and in the API host's secret environment settings when deployed. Don't put the MongoDB URI in a `VITE_` variable; those values are included in the browser build.
+
+## Environment variables
+
+| Variable | Used by | Purpose |
 | --- | --- | --- |
-| GET | `/api/v1/health`, `/api/v1/ready` | Liveness and Mongo readiness |
-| POST | `/api/v1/events` | Single event or batch of up to 100 |
-| GET | `/api/v1/projects` | Project configuration |
-| PATCH | `/api/v1/projects/:projectId` | Update allowed origins |
-| GET | `/api/v1/analytics/overview` | KPI, trends, pages, event categories |
-| GET | `/api/v1/sessions` | Filtered and paginated session aggregates |
-| GET | `/api/v1/sessions/:sessionId/events` | Chronological bounded event list |
-| GET | `/api/v1/events` | Paginated event explorer data |
-| GET | `/api/v1/heatmap/pages` | Pages with actual event/click counts |
-| GET | `/api/v1/heatmap/clicks` | Actual normalized click coordinates for a page |
+| `MONGODB_URI` | API | MongoDB connection string |
+| `PORT` | API | API port; defaults to `4000` locally |
+| `ALLOWED_ORIGINS` | API | Comma-separated browser origins allowed by CORS |
+| `DEFAULT_PROJECT_ID` | API and frontend | Project identifier used by the demo; defaults to `demo-project` |
+| `DEFAULT_PROJECT_NAME` | API | Name for the project created at startup |
+| `EVENT_RETENTION_DAYS` | API | Event retention period; defaults to 90 days |
+| `ADMIN_API_KEY` | API | Required for project settings updates in production |
+| `LOG_LEVEL` | API | Pino logging level; defaults to `info` |
+| `VITE_API_URL` | Dashboard and storefront | Base URL of the API |
+| `VITE_PROJECT_ID` | Dashboard and storefront | Project identifier to query or send events for |
+| `VITE_TRACKER_URL` | Dashboard | URL shown in the tracker installation snippet |
 
-Analytics routes accept `projectId`; date-aware routes accept ISO `from` and `to`. Session listing also accepts `page`, `limit`, `search`, `pageUrl`, and `sort=events`. Heatmap clicks require `pageUrl`.
+## Try the tracking flow
 
-## MongoDB Atlas
+Open the storefront and visit a few pages. Click a product or button, then check the dashboard's Overview, Sessions, Events, or Click heatmap pages.
 
-Create a database user and database, allow only the development/deployment host IP ranges needed, and set the Atlas connection URI in `MONGODB_URI`. Do not commit credentials. Mongoose creates indexes at model initialization, including unique `(projectId,eventId)` and the query indexes. The TTL index deletes records based on server `receivedAt`; existing data is retained until its TTL expires when the configured duration changes. There is no separate migration runner; schema/index changes are applied by Mongoose on startup.
+The heatmap uses normalized viewport coordinates, so it shows where clicks happened inside the visible browser area. It does not reconstruct a full-page screenshot. The dashboard's heatmap preview is a stylized canvas, not a capture of an arbitrary website.
 
-## Tests and builds
+## API routes
 
-```sh
+| Method | Route | What it does |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | Confirms the API process is responding |
+| `GET` | `/api/v1/ready` | Confirms MongoDB is connected |
+| `POST` | `/api/v1/events` | Accepts one event or a batch of up to 100 |
+| `GET` | `/api/v1/projects` | Returns project configuration |
+| `PATCH` | `/api/v1/projects/:projectId` | Updates allowed origins |
+| `GET` | `/api/v1/analytics/overview` | Returns dashboard totals and trends |
+| `GET` | `/api/v1/sessions` | Lists filtered, paginated sessions |
+| `GET` | `/api/v1/sessions/:sessionId/events` | Returns a session's events in order |
+| `GET` | `/api/v1/events` | Returns events for the event explorer |
+| `GET` | `/api/v1/heatmap/pages` | Lists pages with tracked clicks |
+| `GET` | `/api/v1/heatmap/clicks` | Returns click coordinates for a page |
+
+Analytics endpoints accept `projectId`. Date filters use ISO `from` and `to` values. Session listing also supports `page`, `limit`, `search`, `pageUrl`, and `sort=events`. The click endpoint requires `pageUrl`.
+
+## Deploy it
+
+For a basic deployment, I would use Atlas for MongoDB, Render for the API, and Vercel for the two frontend apps.
+
+1. Set up Atlas and allow connections from the API host.
+2. Deploy the API from the repository root. Build with `npm install && npm run build` and start it with `npm run start --workspace @sessionscope/api`.
+3. Add the server variables in the API host's environment settings: `NODE_ENV=production`, `MONGODB_URI`, `ALLOWED_ORIGINS`, `DEFAULT_PROJECT_ID`, `DEFAULT_PROJECT_NAME`, `EVENT_RETENTION_DAYS`, and a strong `ADMIN_API_KEY`.
+4. Deploy `apps/dashboard` and `apps/demo-storefront` as separate frontend projects. Set `VITE_API_URL` to the deployed API URL and `VITE_PROJECT_ID` to the same project ID used by the API. Set `VITE_TRACKER_URL` for the dashboard's installation instructions.
+5. Add the exact dashboard and storefront origins to `ALLOWED_ORIGINS`. Check the project's allowed origins too.
+6. Open `/api/v1/health` and `/api/v1/ready` on the deployed API, send a test event, then check that it appears in the dashboard.
+
+`PORT` is normally provided by the API host. Frontend `VITE_` values are public and need a new build after they change. Never set `MONGODB_URI` or `ADMIN_API_KEY` on a frontend project.
+
+Project settings updates are protected in production by `ADMIN_API_KEY` and the `x-admin-key` request header. This project does not have user login or a secure browser flow for an admin secret, so don't put that key in the dashboard.
+
+## Checks
+
+Run these from the repository root:
+
+```powershell
 npm run typecheck
 npm test
 npm run build
 ```
 
-Tests cover payload validation, normalized click bounds, SDK page-view delivery/session persistence/opt-out, and dashboard shell rendering. Mongo-backed integration and Playwright end-to-end coverage are not included yet; those require a test MongoDB lifecycle and browser automation setup. No live Atlas credentials were provided, so event persistence should be exercised with the local Mongo service before relying on a deployment.
+The tests cover event validation, click coordinate bounds, SDK behavior, and dashboard rendering. There is no automated MongoDB integration suite or browser end-to-end suite yet.
 
-## Deployment
+## A few limitations
 
-1. Provision MongoDB Atlas and restrict network access to the API host.
-2. Deploy `apps/api` to Render or another Node.js host with `MONGODB_URI`, `ALLOWED_ORIGINS`, `DEFAULT_PROJECT_ID`, and retention settings. Set the start command to `npm run start --workspace @sessionscope/api`; build with `npm install && npm run build`.
-3. Deploy `apps/dashboard` and `apps/demo-storefront` as separate Vercel projects with root directory and workspace build configuration, set `VITE_API_URL`, `VITE_PROJECT_ID`, and (on dashboard) `VITE_TRACKER_URL`.
-4. Add production dashboard/storefront origins to API CORS configuration and project allowed origins. Serve the tracker bundle at a stable HTTPS URL and update the installation snippet.
-5. Verify health/readiness, send a demo event, then verify it appears in the dashboard. No deployment has been created or verified.
-
-## Security and privacy decisions
-
-The SDK excludes input values, password/email/telephone/number field content, keystrokes, and DOM snapshots. It omits URL query strings and fragments, strips query strings from referrers, records only a short non-email/non-phone label, and ignores opt-out and `[data-ss-ignore]`. It uses localStorage for the random session ID and last activity timestamp, expiring after 30 minutes idle. The project ID is public and is not authentication. Origin checks can be forged by non-browser clients; for meaningful public traffic add signed ingestion tokens or edge/WAF controls, bot filtering, and per-project quotas. Configure consent and retention to match applicable policies. Do not use this demo as regulated-data analytics.
-
-## Limitations and operational work
-
-- Date range filtering is available on overview and API queries; advanced cross-filtering, period-over-period comparison, and viewport-filter controls are not exposed in the current dashboard.
-- The initial standalone tracker is bundled into the demo app's public directory; publish it to a dedicated static host for independent production installation. The dashboard preview is illustrative; arbitrary external pages may deny framing and are not embedded.
-- Ingestion rate limits are in-memory and per API process. Use a shared limiter at scale. Event batching is small and bounded in browser memory; prolonged offline delivery may drop the oldest queued item.
-- Mongo aggregation and indexes suit a small assignment dataset. High volume requires load testing, query budgets, rollups, backups, monitoring, and possibly partitioning/archival. Session summaries are computed at read time.
-- Retention uses MongoDB TTL deletion, which is asynchronous. TTL expiry is not an exact deletion deadline.
-- Integration/E2E, cross-browser, consent-manager integrations, account authentication, role-based access, and production deployment are future work.
-
-## Screenshots
-
-Add screenshots or a short GIF here after running the local apps.
-
-## Repository commands
-
-```sh
-git init
-git add .
-git commit -m "Build SessionScope analytics platform"
-git branch -M main
-git remote add origin <your-repository-url>
-git push -u origin main
-```
+- Origin checks help control browser submissions, but they are not authentication; non-browser clients can forge an origin.
+- Rate limits are kept in memory by each API process. A larger deployment should use shared rate limiting, monitoring, backups, and load testing.
+- Retention uses MongoDB's TTL index. MongoDB deletes expired documents asynchronously, so deletion is not exact to the minute.
+- The tracker is currently bundled with the demo storefront. For a separate website, host the built tracker file at a stable HTTPS URL.
+- The app has no accounts or role-based access. Don't use it for sensitive or regulated analytics.
