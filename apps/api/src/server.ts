@@ -5,7 +5,11 @@ import { Project } from './models.js';
 
 async function main() {
   await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 8000 });
-  await Project.updateOne({ projectId: config.projectId }, { $setOnInsert: { projectId: config.projectId, name: config.projectName, allowedOrigins: config.allowedOrigins, retentionDays: config.retentionDays, trackingConfig: { enabled: true, sessionTimeoutMinutes: 30 } } }, { upsert: true });
+  await Project.updateOne({ projectId: config.projectId }, {
+    $setOnInsert: { projectId: config.projectId, name: config.projectName, retentionDays: config.retentionDays, trackingConfig: { enabled: true, sessionTimeoutMinutes: 30 } },
+    // Also apply origins from the deployment config to projects created earlier.
+    $addToSet: { allowedOrigins: { $each: config.allowedOrigins } },
+  }, { upsert: true });
   const server = app.listen(config.port, () => logger.info({ port: config.port }, 'SessionScope API listening'));
   const shutdown = async () => { server.close(); await mongoose.disconnect(); process.exit(0); };
   process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
