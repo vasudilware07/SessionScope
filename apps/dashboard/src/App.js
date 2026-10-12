@@ -5,7 +5,7 @@ import { Activity, BarChart3, BookOpen, ChevronDown, ChevronLeft, ChevronRight, 
 import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api, PROJECT, query } from './api';
-const dateParams = (range) => { const to = new Date(), from = new Date(); if (range === '24h')
+const dateParams = (range) => { const to = new Date(); to.setSeconds(0, 0); const from = new Date(to); if (range === '24h')
     from.setHours(from.getHours() - 24);
 else
     from.setDate(from.getDate() - (range === '7d' ? 7 : 30)); return { from: from.toISOString(), to: to.toISOString() }; };
