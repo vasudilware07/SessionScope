@@ -3,7 +3,8 @@ services:
     name: sessionscope-api
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run build --workspace @sessionscope/api
+    # TypeScript and the API's @types packages are devDependencies needed at build time.
+    buildCommand: npm ci --include=dev && npm run build --workspace @sessionscope/api
     startCommand: npm run start --workspace @sessionscope/api
     healthCheckPath: /api/v1/ready
     envVars:
