@@ -69,15 +69,27 @@ app.get('/api/v1/analytics/overview', async (req, res, next) => {
   try {
     const match: any = { projectId: projectQuery(req), timestamp: dateRange(req) };
     const [summary] = await Event.aggregate([{ $match: match }, { $group: { _id: null, totalEvents: { $sum: 1 }, pageViews: { $sum: { $cond: [{ $eq: ['$eventType','page_view'] },1,0] } }, clicks: { $sum: { $cond: [{ $eq: ['$eventType','click'] },1,0] } }, sessions: { $addToSet: '$sessionId' }, firstSeen: { $min: '$timestamp' }, lastSeen: { $max: '$timestamp' } } }, { $project: { _id: 0, totalEvents: 1, pageViews: 1, clicks: 1, sessions: { $size: '$sessions' } } }]);
-    const [pages,topClickPages,trends,eventTypes,recent] = await Promise.all([
+    const [pages,topClickPages,trends,eventTypes,recent,devices,rawSources] = await Promise.all([
       Event.aggregate([{ $match: { ...match, eventType: 'page_view' } }, { $group: { _id: '$pageUrl', views: { $sum: 1 }, clicks: { $sum: 0 } } }, { $sort: { views: -1 } }, { $limit: 8 }, { $project: { _id: 0, pageUrl: '$_id', views: 1 } }]),
       Event.aggregate([{ $match: { ...match, eventType: 'click' } }, { $group: { _id: '$pageUrl', clicks: { $sum: 1 } } }, { $sort: { clicks: -1 } }, { $limit: 8 }, { $project: { _id: 0, pageUrl: '$_id', clicks: 1 } }]),
       Event.aggregate([{ $match: match }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } }, sessions: { $addToSet: '$sessionId' }, pageViews: { $sum: { $cond: [{ $eq: ['$eventType','page_view'] },1,0] } }, clicks: { $sum: { $cond: [{ $eq: ['$eventType','click'] },1,0] } } } }, { $sort: { _id: 1 } }, { $project: { _id: 0, date: '$_id', sessions: { $size: '$sessions' }, pageViews: 1, clicks: 1 } }]),
       Event.aggregate([{ $match: match }, { $group: { _id: '$eventType', count: { $sum: 1 } } }, { $project: { _id: 0, eventType: '$_id', count: 1 } }]),
       Event.aggregate([{ $match: match }, { $sort: { timestamp: -1 } }, { $group: { _id: '$sessionId', lastSeen: { $first: '$timestamp' }, eventCount: { $sum: 1 }, lastPage: { $first: '$pageUrl' } } }, { $sort: { lastSeen: -1 } }, { $limit: 6 }]),
+      Event.aggregate([{ $match: match }, { $group: { _id: '$sessionId', device: { $first: { $ifNull: ['$device.category', 'unknown'] } } } }, { $group: { _id: '$device', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $project: { _id: 0, device: '$_id', count: 1 } }]),
+      Event.aggregate([{ $match: { ...match, eventType: 'page_view' } }, { $group: { _id: { $ifNull: ['$referrer', ''] }, visits: { $sum: 1 } } }, { $sort: { visits: -1 } }, { $limit: 30 }]),
     ]);
-    const sessionAgg = await Event.aggregate([{ $match: match }, { $group: { _id: '$sessionId', first: { $min: '$timestamp' }, last: { $max: '$timestamp' }, events: { $sum: 1 } } }, { $group: { _id: null, avgDurationMs: { $avg: { $subtract: ['$last','$first'] } }, avgEvents: { $avg: '$events' } } }]);
-    res.json({ data: { ...(summary ?? { totalEvents: 0, pageViews: 0, clicks: 0, sessions: 0 }), averageDurationMs: sessionAgg[0]?.avgDurationMs ?? 0, averageEventsPerSession: sessionAgg[0]?.avgEvents ?? 0, pages, topClickPages, trends, eventTypes, recentSessions: recent.map((s: any) => ({ sessionId: s._id, ...s })) } });
+    const [sessionAgg] = await Event.aggregate([{ $match: match }, { $group: { _id: '$sessionId', first: { $min: '$timestamp' }, last: { $max: '$timestamp' }, events: { $sum: 1 }, pageViews: { $sum: { $cond: [{ $eq: ['$eventType', 'page_view'] }, 1, 0] } }, clicks: { $sum: { $cond: [{ $eq: ['$eventType', 'click'] }, 1, 0] } } } }, { $group: { _id: null, avgDurationMs: { $avg: { $subtract: ['$last','$first'] } }, avgEvents: { $avg: '$events' }, engagedSessions: { $sum: { $cond: [{ $or: [{ $gt: ['$events', 1] }, { $gt: ['$clicks', 0] }] }, 1, 0] } }, singlePageSessions: { $sum: { $cond: [{ $and: [{ $eq: ['$pageViews', 1] }, { $eq: ['$clicks', 0] }] }, 1, 0] } } } }]);
+    const sourceCounts = new Map<string, number>();
+    for (const source of rawSources as Array<{ _id: string; visits: number }>) {
+      let label = 'Direct / unknown';
+      if (source._id) { try { label = new URL(source._id).hostname.replace(/^www\./, '') || label; } catch { label = 'Other'; } }
+      sourceCounts.set(label, (sourceCounts.get(label) ?? 0) + source.visits);
+    }
+    const sources = [...sourceCounts].map(([source, visits]) => ({ source, visits })).sort((a, b) => b.visits - a.visits).slice(0, 8);
+    const sessions = summary?.sessions ?? 0;
+    const engagedSessions = sessionAgg?.engagedSessions ?? 0;
+    const singlePageSessions = sessionAgg?.singlePageSessions ?? 0;
+    res.json({ data: { ...(summary ?? { totalEvents: 0, pageViews: 0, clicks: 0, sessions: 0 }), averageDurationMs: sessionAgg?.avgDurationMs ?? 0, averageEventsPerSession: sessionAgg?.avgEvents ?? 0, engagedSessions, engagementRate: sessions ? engagedSessions / sessions * 100 : 0, singlePageSessions, bounceRate: sessions ? singlePageSessions / sessions * 100 : 0, pages, topClickPages, trends, eventTypes, devices, sources, recentSessions: recent.map((s: any) => ({ sessionId: s._id, ...s })) } });
   } catch (e) { next(e); }
 });
 
