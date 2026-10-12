@@ -30,7 +30,7 @@ Install Node.js 20 or newer and npm 10 or newer. For local development, use Dock
 
 ## Run it locally
 
-In PowerShell, open this project folder and run:
+In PowerShell, open this project folder and run the copy command the first time only. If `.env` already exists, do not copy `.env.example` over it again, because that replaces your MongoDB URI with the local default.
 
 ```powershell
 Copy-Item .env.example .env

@@ -4,3 +4,4 @@
 
 :focus-visible{outline:2px solid #5868d9;outline-offset:2px}
 
+.status-dot.checking{background:#e2a12b;box-shadow:0 0 0 4px #fff4dc}.status-dot.offline{background:#d94a54;box-shadow:0 0 0 4px #fbecee}
