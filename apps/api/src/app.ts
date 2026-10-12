@@ -23,6 +23,7 @@ const ipIngestionLimit = rateLimit({ windowMs: 60_000, limit: 120, standardHeade
 const projectIngestionLimit = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: req => String(req.body?.projectId ?? 'unknown') });
 const projectQuery = (req: express.Request) => String(req.query.projectId ?? config.projectId);
 const dateRange = (req: express.Request) => { const timestamp: Record<string, Date> = {}; if (req.query.from) timestamp.$gte = new Date(String(req.query.from)); if (req.query.to) timestamp.$lte = new Date(String(req.query.to)); return timestamp; };
+const dateFilter = (req: express.Request) => { const timestamp = dateRange(req); return Object.keys(timestamp).length ? { timestamp } : {}; };
 
 app.get('/api/v1/health', (_req, res) => res.json({ data: { status: 'ok', time: new Date().toISOString() } }));
 app.get('/api/v1/ready', async (_req, res) => { const ready = (await import('mongoose')).default.connection.readyState === 1; res.status(ready ? 200 : 503).json({ data: { ready } }); });
@@ -52,7 +53,7 @@ app.patch('/api/v1/projects/:projectId', async (req, res, next) => { try { if (p
 app.get('/api/v1/sessions', async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page ?? 1)), limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 20)));
-    const match: any = { projectId: projectQuery(req), timestamp: dateRange(req) };
+    const match: any = { projectId: projectQuery(req), ...dateFilter(req) };
     if (req.query.search) match.sessionId = { $regex: String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     if (req.query.pageUrl) match.pageUrl = String(req.query.pageUrl);
     const sortKey = req.query.sort === 'events' ? 'eventCount' : 'lastSeen';
@@ -62,12 +63,12 @@ app.get('/api/v1/sessions', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 app.get('/api/v1/sessions/:sessionId/events', async (req, res, next) => { try { const limit = Math.min(500, Math.max(1, Number(req.query.limit ?? 200))); const events = await Event.find({ projectId: projectQuery(req), sessionId: req.params.sessionId }).sort({ timestamp: 1 }).limit(limit).select('-_id -__v').lean(); res.json({ data: events }); } catch (e) { next(e); } });
-app.get('/api/v1/events', async (req, res, next) => { try { const page = Math.max(1, Number(req.query.page ?? 1)), limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50))); const q: any = { projectId: projectQuery(req), timestamp: dateRange(req) }; if (req.query.eventType) q.eventType = String(req.query.eventType); if (req.query.sessionId) q.sessionId = String(req.query.sessionId); if (req.query.pageUrl) q.pageUrl = String(req.query.pageUrl); const [data,total] = await Promise.all([Event.find(q).sort({ timestamp: -1 }).skip((page - 1) * limit).limit(limit).select('-_id -__v').lean(), Event.countDocuments(q)]); res.json({ data, meta: { page, limit, total } }); } catch (e) { next(e); } });
+app.get('/api/v1/events', async (req, res, next) => { try { const page = Math.max(1, Number(req.query.page ?? 1)), limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50))); const q: any = { projectId: projectQuery(req), ...dateFilter(req) }; if (req.query.eventType) q.eventType = String(req.query.eventType); if (req.query.sessionId) q.sessionId = String(req.query.sessionId); if (req.query.pageUrl) q.pageUrl = String(req.query.pageUrl); const [data,total] = await Promise.all([Event.find(q).sort({ timestamp: -1 }).skip((page - 1) * limit).limit(limit).select('-_id -__v').lean(), Event.countDocuments(q)]); res.json({ data, meta: { page, limit, total } }); } catch (e) { next(e); } });
 app.get('/api/v1/heatmap/pages', async (req, res, next) => { try { const data = await Event.aggregate([{ $match: { projectId: projectQuery(req) } }, { $group: { _id: '$pageUrl', eventCount: { $sum: 1 }, clickCount: { $sum: { $cond: [{ $eq: ['$eventType','click'] },1,0] } } } }, { $sort: { clickCount: -1, eventCount: -1 } }, { $project: { _id: 0, pageUrl: '$_id', eventCount: 1, clickCount: 1 } }]); res.json({ data }); } catch (e) { next(e); } });
-app.get('/api/v1/heatmap/clicks', async (req, res, next) => { try { if (!req.query.pageUrl) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pageUrl is required' } }); const q: any = { projectId: projectQuery(req), eventType: 'click', pageUrl: String(req.query.pageUrl), timestamp: dateRange(req) }; if (req.query.viewportWidth) q['viewport.width'] = Number(req.query.viewportWidth); if (req.query.viewportHeight) q['viewport.height'] = Number(req.query.viewportHeight); const data = await Event.find(q).sort({ timestamp: -1 }).limit(5000).select('eventId sessionId timestamp click viewport element -_id').lean(); res.json({ data }); } catch (e) { next(e); } });
+app.get('/api/v1/heatmap/clicks', async (req, res, next) => { try { if (!req.query.pageUrl) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'pageUrl is required' } }); const q: any = { projectId: projectQuery(req), eventType: 'click', pageUrl: String(req.query.pageUrl), ...dateFilter(req) }; if (req.query.viewportWidth) q['viewport.width'] = Number(req.query.viewportWidth); if (req.query.viewportHeight) q['viewport.height'] = Number(req.query.viewportHeight); const data = await Event.find(q).sort({ timestamp: -1 }).limit(5000).select('eventId sessionId timestamp click viewport element -_id').lean(); res.json({ data }); } catch (e) { next(e); } });
 app.get('/api/v1/analytics/overview', async (req, res, next) => {
   try {
-    const match: any = { projectId: projectQuery(req), timestamp: dateRange(req) };
+    const match: any = { projectId: projectQuery(req), ...dateFilter(req) };
     const [summary] = await Event.aggregate([{ $match: match }, { $group: { _id: null, totalEvents: { $sum: 1 }, pageViews: { $sum: { $cond: [{ $eq: ['$eventType','page_view'] },1,0] } }, clicks: { $sum: { $cond: [{ $eq: ['$eventType','click'] },1,0] } }, sessions: { $addToSet: '$sessionId' }, firstSeen: { $min: '$timestamp' }, lastSeen: { $max: '$timestamp' } } }, { $project: { _id: 0, totalEvents: 1, pageViews: 1, clicks: 1, sessions: { $size: '$sessions' } } }]);
     const [pages,topClickPages,trends,eventTypes,recent,devices,rawSources] = await Promise.all([
       Event.aggregate([{ $match: { ...match, eventType: 'page_view' } }, { $group: { _id: '$pageUrl', views: { $sum: 1 }, clicks: { $sum: 0 } } }, { $sort: { views: -1 } }, { $limit: 8 }, { $project: { _id: 0, pageUrl: '$_id', views: 1 } }]),
