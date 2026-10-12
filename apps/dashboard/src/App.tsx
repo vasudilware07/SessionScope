@@ -5,7 +5,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api, API_URL, PROJECT, query } from './api';
 
-const dateParams = (range:string) => { const to=new Date(), from=new Date(); if(range==='24h') from.setHours(from.getHours()-24); else from.setDate(from.getDate()-(range==='7d'?7:30)); return {from:from.toISOString(),to:to.toISOString()}; };
+const dateParams = (range:string) => {
+  const to = new Date();
+  to.setSeconds(0, 0);
+  const from = new Date(to);
+  if (range === '24h') from.setHours(from.getHours() - 24);
+  else from.setDate(from.getDate() - (range === '7d' ? 7 : 30));
+  return { from: from.toISOString(), to: to.toISOString() };
+};
 const fmt = (d:string|number) => new Date(d).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const dur = (ms:number) => ms < 60_000 ? `${Math.max(0,Math.round(ms/1000))}s` : `${Math.floor(ms/60_000)}m ${Math.floor(ms/1000)%60}s`;
 function clusterClicks(events:any[]){const clusters:{x:number;y:number;count:number;label:string}[]=[];for(const e of events){const x=e.click.normalizedX,y=e.click.normalizedY,c=clusters.find(p=>Math.hypot(p.x-x,p.y-y)<.035);if(c){c.x=(c.x*c.count+x)/(c.count+1);c.y=(c.y*c.count+y)/(c.count+1);c.count++}else clusters.push({x,y,count:1,label:e.element?.label??'click'})}return clusters}
